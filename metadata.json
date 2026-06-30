@@ -1,0 +1,6 @@
+{
+  "name": "Import Export Calculator",
+  "description": "An auto-calculator for import/export box quantities, featuring magic paste support to split tab-separated or space-separated data into individual fields automatically.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
