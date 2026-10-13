@@ -5,8 +5,6 @@ name: Build Portable Windows EXE
 
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 
 permissions:
   contents: write
@@ -150,23 +148,22 @@ jobs:
       - name: Icons generate
         run: npx tauri icon app-icon.png
 
-      - name: EXE build (installer ke baghair)
-        run: npx tauri build --no-bundle
+      - name: EXE aur Setup build karo
+        run: npx tauri build --bundles nsis
 
-      - name: Portable zip banao
+      - name: Files ko seedhe naam do
         run: |
-          mkdir portable
-          cp src-tauri/target/release/import-export-calculator.exe portable/Import-Export-Calculator.exe
-          cd portable
-          7z a ../Import-Export-Calculator-portable.zip Import-Export-Calculator.exe
+          mkdir release
+          cp src-tauri/target/release/import-export-calculator.exe "release/Import-Export-Calculator-portable.exe"
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe "release/Import-Export-Calculator-Setup.exe"
+          ls -la release
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Import-Export-Calculator-portable
-          path: Import-Export-Calculator-portable.zip
-
-      - name: Release mein upload (sirf tag push par)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release mein upload (seedhi exe download hogi)
         uses: softprops/action-gh-release@v2
         with:
-          files: Import-Export-Calculator-portable.zip
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          make_latest: true
+          files: |
+            release/Import-Export-Calculator-portable.exe
+            release/Import-Export-Calculator-Setup.exe
