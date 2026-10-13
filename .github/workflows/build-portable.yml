@@ -1,0 +1,172 @@
+name: Build Portable Windows EXE
+
+# Is file ko repo mein ye path do:  .github/workflows/build-portable.yml
+# Phir Actions tab > "Build Portable Windows EXE" > Run workflow
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Tauri ki files khud banao
+        run: |
+          mkdir -p src-tauri/src src-tauri/capabilities
+
+          cat > src-tauri/Cargo.toml <<'TOML'
+          [package]
+          name = "import-export-calculator"
+          version = "0.1.0"
+          description = "Import Export Calculator"
+          edition = "2021"
+
+          [lib]
+          name = "import_export_calculator_lib"
+          crate-type = ["staticlib", "cdylib", "rlib"]
+
+          [build-dependencies]
+          tauri-build = { version = "2", features = [] }
+
+          [dependencies]
+          tauri = { version = "2", features = [] }
+
+          [profile.release]
+          panic = "abort"
+          codegen-units = 1
+          lto = true
+          opt-level = "s"
+          strip = true
+          TOML
+
+          cat > src-tauri/build.rs <<'RS'
+          fn main() {
+              tauri_build::build()
+          }
+          RS
+
+          cat > src-tauri/src/lib.rs <<'RS'
+          #[cfg_attr(mobile, tauri::mobile_entry_point)]
+          pub fn run() {
+              tauri::Builder::default()
+                  .run(tauri::generate_context!())
+                  .expect("error while running tauri application");
+          }
+          RS
+
+          cat > src-tauri/src/main.rs <<'RS'
+          #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+          fn main() {
+              import_export_calculator_lib::run()
+          }
+          RS
+
+          cat > src-tauri/capabilities/default.json <<'JSON'
+          {
+            "$schema": "../gen/schemas/desktop-schema.json",
+            "identifier": "default",
+            "description": "Default permissions",
+            "windows": ["main"],
+            "permissions": ["core:default"]
+          }
+          JSON
+
+          cat > src-tauri/tauri.conf.json <<'JSON'
+          {
+            "$schema": "https://schema.tauri.app/config/2",
+            "productName": "Import Export Calculator",
+            "version": "0.1.0",
+            "identifier": "com.classiclover.importexportcalculator",
+            "build": {
+              "beforeBuildCommand": "npm run build",
+              "frontendDist": "../dist"
+            },
+            "app": {
+              "windows": [
+                {
+                  "label": "main",
+                  "title": "Import Export Calculator",
+                  "width": 1100,
+                  "height": 800,
+                  "resizable": true
+                }
+              ],
+              "security": { "csp": null }
+            },
+            "bundle": {
+              "active": true,
+              "targets": "all",
+              "icon": [
+                "icons/32x32.png",
+                "icons/128x128.png",
+                "icons/128x128@2x.png",
+                "icons/icon.icns",
+                "icons/icon.ico"
+              ]
+            }
+          }
+          JSON
+
+      - name: App icon banao
+        run: |
+          python -m pip install pillow
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          im = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+          d = ImageDraw.Draw(im)
+          d.rounded_rectangle((64, 64, 960, 960), 180, fill=(37, 99, 235, 255))
+          d.rectangle((300, 330, 724, 700), fill=(255, 255, 255, 255))
+          d.rectangle((300, 330, 724, 430), fill=(191, 219, 254, 255))
+          d.line((512, 430, 512, 700), fill=(37, 99, 235, 255), width=24)
+          im.save("app-icon.png")
+          PY
+
+      - name: Dependencies install
+        run: |
+          npm install
+          npm install --save-dev @tauri-apps/cli@^2
+
+      - name: Icons generate
+        run: npx tauri icon app-icon.png
+
+      - name: EXE build (installer ke baghair)
+        run: npx tauri build --no-bundle
+
+      - name: Portable zip banao
+        run: |
+          mkdir portable
+          cp src-tauri/target/release/import-export-calculator.exe portable/Import-Export-Calculator.exe
+          cd portable
+          7z a ../Import-Export-Calculator-portable.zip Import-Export-Calculator.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Import-Export-Calculator-portable
+          path: Import-Export-Calculator-portable.zip
+
+      - name: Release mein upload (sirf tag push par)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Import-Export-Calculator-portable.zip
